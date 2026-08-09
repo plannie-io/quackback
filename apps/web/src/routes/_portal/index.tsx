@@ -12,7 +12,16 @@ import { votedPostsKeys } from '@/lib/client/hooks/use-portal-posts-query'
 const searchSchema = z.object({
   board: z.string().optional(),
   search: z.string().optional(),
-  sort: z.enum(['top', 'new', 'trending']).optional().default('trending'),
+  // No `.default('trending')` here, deliberately. A default in `validateSearch`
+  // makes the router rewrite any URL that omits the param — so `/` 307'd to
+  // `/?sort=trending`, and the portal home page (the URL in sitemap.xml, and the
+  // target of every `rel=canonical` this route emits) was permanently a redirect
+  // to a parameterised duplicate of itself. Search Console reports that as
+  // "Page with redirect" and fails validation on the "Alternative page with
+  // proper canonical tag" it files against the `?sort=` URLs, because the
+  // declared canonical does not resolve. Every reader below already falls back
+  // to 'trending' on its own, so the default costs nothing to drop.
+  sort: z.enum(['top', 'new', 'trending']).optional(),
   status: z.array(z.string()).optional(),
   tagIds: z.array(z.string()).optional(),
   minVotes: z.coerce.number().int().min(1).optional(),
