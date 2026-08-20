@@ -109,6 +109,7 @@ export function ChangelogListPublic() {
                 publishedAt={entry.publishedAt}
                 linkedPosts={entry.linkedPosts}
                 categories={entry.categories}
+                tags={entry.tags}
               />
             </div>
           ))}

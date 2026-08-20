@@ -15,7 +15,7 @@ import { ChangelogFormFields } from './changelog-form-fields'
 import { ChangelogMetadataSidebar } from './changelog-metadata-sidebar'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 import type { JSONContent } from '@tiptap/react'
-import type { PostId, ChangelogCategoryId, SegmentId } from '@quackback/ids'
+import type { PostId, ChangelogCategoryId, PostTagId, SegmentId } from '@quackback/ids'
 
 // Mobile-only version of the sidebar content for the sheet
 import { ChangelogMetadataSidebarContent } from './changelog-metadata-sidebar-content'
@@ -29,6 +29,7 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
   const [contentJson, setContentJson] = useState<JSONContent | null>(null)
   const [linkedPostIds, setLinkedPostIds] = useState<PostId[]>([])
   const [categoryIds, setCategoryIds] = useState<ChangelogCategoryId[]>([])
+  const [tagIds, setTagIds] = useState<PostTagId[]>([])
   const [notify, setNotify] = useState(true)
   const [segmentIds, setSegmentIds] = useState<SegmentId[]>([])
   const [publishState, setPublishState] = useState<PublishState>({ type: 'draft' })
@@ -77,6 +78,7 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
     setContentJson(null)
     setLinkedPostIds([])
     setCategoryIds([])
+    setTagIds([])
     setNotify(true)
     setSegmentIds([])
     setPublishState({ type: 'draft' })
@@ -93,6 +95,7 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
         contentJson: contentJson as TiptapContent | null,
         linkedPostIds,
         categoryIds,
+        tagIds,
         publishState,
         notify,
         segmentIds,
@@ -174,6 +177,8 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
                 onLinkedPostsChange={setLinkedPostIds}
                 categoryIds={categoryIds}
                 onCategoriesChange={setCategoryIds}
+                tagIds={tagIds}
+                onTagsChange={setTagIds}
                 notify={notify}
                 onNotifyChange={setNotify}
                 segmentIds={segmentIds}
@@ -212,6 +217,8 @@ export function CreateChangelogDialog({ onChangelogCreated }: CreateChangelogDia
                       onLinkedPostsChange={setLinkedPostIds}
                       categoryIds={categoryIds}
                       onCategoriesChange={setCategoryIds}
+                      tagIds={tagIds}
+                      onTagsChange={setTagIds}
                       notify={notify}
                       onNotifyChange={setNotify}
                       segmentIds={segmentIds}

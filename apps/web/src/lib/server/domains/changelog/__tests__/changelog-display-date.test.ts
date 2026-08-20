@@ -29,6 +29,14 @@ vi.mock('@/lib/server/db', async (importOriginal) => ({
       },
     }),
     delete: () => ({ where: vi.fn().mockResolvedValue(undefined) }),
+    // Tag hydrator: `db.select().from().innerJoin().where().orderBy()` => [].
+    select: () => {
+      const chain: Record<string, unknown> = {}
+      chain.from = () => chain
+      chain.innerJoin = () => chain
+      chain.where = () => ({ orderBy: () => Promise.resolve([]) })
+      return chain
+    },
   },
   eq: vi.fn(),
   and: vi.fn(),

@@ -25,6 +25,8 @@ export const createChangelogSchema = z.object({
   contentJson: tiptapContentSchema.nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
   categoryIds: z.array(z.string()).optional(),
+  /** Tag IDs to attach (reuses the shared `tags` entity, no new taxonomy) */
+  tagIds: z.array(z.string()).optional(),
   publishState: publishStateSchema,
   displayDate: z.coerce.date().nullable().optional(),
   /** Hero image URL shown atop the public entry detail page; null clears it. */
@@ -49,6 +51,8 @@ export const updateChangelogSchema = z.object({
   contentJson: tiptapContentSchema.nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
   categoryIds: z.array(z.string()).optional(),
+  /** Tag IDs to attach (reuses the shared `tags` entity, no new taxonomy) */
+  tagIds: z.array(z.string()).optional(),
   publishState: publishStateSchema.optional(),
   displayDate: z.coerce.date().nullable().optional(),
   /** Hero image URL shown atop the public entry detail page; null clears it. */
@@ -68,6 +72,10 @@ export const updateChangelogSchema = z.object({
  */
 export const listChangelogsSchema = z.object({
   status: z.enum(['draft', 'scheduled', 'published', 'all']).optional(),
+  /** Filter to entries tagged with any of these tag ids */
+  tagIds: z.array(z.string()).optional(),
+  /** Filter to entries tagged with any of these tag names (case-insensitive) */
+  tags: z.array(z.string()).optional(),
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(100).optional(),
 })
@@ -99,6 +107,8 @@ export const topViewedChangelogsSchema = z.object({
 export const listPublicChangelogsSchema = z.object({
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(100).optional(),
+  /** Filter to entries tagged with any of these tag names (case-insensitive) */
+  tags: z.array(z.string()).optional(),
 })
 
 // Export types inferred from schemas

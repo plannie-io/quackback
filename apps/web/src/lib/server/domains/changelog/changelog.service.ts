@@ -14,7 +14,9 @@ import {
   db,
   changelogEntries,
   changelogEntryPosts,
+  changelogEntryTags,
   posts,
+  postTags,
   principal,
   postStatuses,
   eq,
@@ -25,7 +27,7 @@ import {
   lte,
   inArray,
 } from '@/lib/server/db'
-import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
+import type { ChangelogId, PrincipalId, PostId, PostTagId } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { markdownToTiptapJson, projectContentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { rehostExternalImages } from '@/lib/server/content/rehost-images'
@@ -37,6 +39,7 @@ import {
 } from '@/lib/server/events/dispatch'
 import { scheduleDispatch, cancelScheduledDispatch } from '@/lib/server/events/scheduler'
 import { setEntryCategories, getCategoriesForEntries } from './changelog-category.service'
+import { getTagsForEntries } from './changelog-tag.service'
 import { embedChangelogEntryOnPublish } from './changelog-embedding.service'
 import { logger } from '@/lib/server/logger'
 
@@ -130,6 +133,11 @@ export async function createChangelog(
   // Link categories if provided
   if (input.categoryIds && input.categoryIds.length > 0) {
     await setEntryCategories(entry.id, input.categoryIds)
+  }
+
+  // Link tags if provided
+  if (input.tagIds && input.tagIds.length > 0) {
+    await setChangelogTags(entry.id, input.tagIds)
   }
 
   // Dispatch event or schedule delayed job based on publish state. `notify`
@@ -252,6 +260,12 @@ export async function updateChangelog(
   // Update linked categories if provided (full replace)
   if (input.categoryIds !== undefined) {
     await setEntryCategories(id, input.categoryIds)
+  }
+
+  // Update linked tags if provided (full replace) — undefined leaves the
+  // attached tags alone, [] clears them, same semantics as linkedPostIds.
+  if (input.tagIds !== undefined) {
+    await setChangelogTags(id, input.tagIds)
   }
 
   // Handle event dispatch / scheduling when publish state changes
@@ -408,6 +422,10 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     color: c.color,
   }))
 
+  // Tags (reusing the shared `tags` entity) attached to this entry.
+  const tagsMap = await getTagsForEntries([id])
+  const tags = tagsMap.get(id) ?? []
+
   return {
     id: entry.id,
     title: entry.title,
@@ -424,6 +442,7 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     author,
     linkedPosts,
     categories,
+    tags,
     status: computeStatus(entry.publishedAt),
   }
 }
@@ -574,6 +593,48 @@ async function linkPostsToChangelog(changelogId: ChangelogId, postIds: PostId[])
       }))
     )
   }
+}
+
+/**
+ * Replace the full set of tags linked to a changelog entry (reusing the
+ * workspace's shared `tags` entity — see changelog-tag.service.ts). Unlike
+ * `linkPostsToChangelog`'s tolerant-invalid-id behavior, an unknown or
+ * soft-deleted tag id is a hard error: tags are a curated, admin-managed
+ * list (unlike ad-hoc linked posts), so a stale id silently dropping would
+ * hide a real mistake from the caller. The delete+insert runs atomically so
+ * a mid-replace failure can't leave the entry with a half-updated tag set.
+ */
+export async function setChangelogTags(
+  changelogId: ChangelogId,
+  tagIds: PostTagId[]
+): Promise<void> {
+  if (tagIds.length > 0) {
+    const existingTags = await db.query.postTags.findMany({
+      where: and(inArray(postTags.id, tagIds), isNull(postTags.deletedAt)),
+      columns: { id: true },
+    })
+    const validIds = new Set(existingTags.map((t) => t.id))
+    const unknownIds = tagIds.filter((id) => !validIds.has(id))
+    if (unknownIds.length > 0) {
+      throw new ValidationError(
+        'VALIDATION_ERROR',
+        `Unknown or deleted tag ID(s): ${unknownIds.join(', ')}`
+      )
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(changelogEntryTags).where(eq(changelogEntryTags.changelogEntryId, changelogId))
+
+    if (tagIds.length > 0) {
+      await tx.insert(changelogEntryTags).values(
+        tagIds.map((tagId) => ({
+          changelogEntryId: changelogId,
+          tagId,
+        }))
+      )
+    }
+  })
 }
 
 /**

@@ -8,6 +8,7 @@ import type {
   ChangelogCategoryId,
   PrincipalId,
   PostId,
+  PostTagId,
   SegmentId,
 } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
@@ -17,6 +18,16 @@ export type { PublishState } from '@/lib/shared/schemas/changelog'
 /** Category summary attached to an entry (admin + public projections). */
 export interface ChangelogCategorySummary {
   id: ChangelogCategoryId
+  name: string
+  color: string
+}
+
+/**
+ * Tag attached to an entry (admin + public projections). Reuses the
+ * workspace's shared `tags` (post_tags) entity — see changelog-tag.service.ts.
+ */
+export interface ChangelogTag {
+  id: PostTagId
   name: string
   color: string
 }
@@ -36,6 +47,8 @@ export interface CreateChangelogInput {
   linkedPostIds?: PostId[]
   /** IDs of categories (labels) to attach to this changelog entry */
   categoryIds?: ChangelogCategoryId[]
+  /** IDs of tags (reusing the shared `tags` entity) to attach to this entry */
+  tagIds?: PostTagId[]
   /** Publish state */
   publishState: PublishState
   displayDate?: Date | null
@@ -67,6 +80,9 @@ export interface UpdateChangelogInput {
   linkedPostIds?: PostId[]
   /** IDs of categories to attach (replaces existing links) */
   categoryIds?: ChangelogCategoryId[]
+  /** IDs of tags to attach (replaces existing links). Undefined leaves the
+   *  attached tags alone; [] clears them — same semantics as linkedPostIds. */
+  tagIds?: PostTagId[]
   /** Publish state (if changing) */
   publishState?: PublishState
   displayDate?: Date | null
@@ -84,6 +100,10 @@ export interface UpdateChangelogInput {
 export interface ListChangelogParams {
   /** Filter by status */
   status?: 'draft' | 'scheduled' | 'published' | 'all'
+  /** Filter to entries tagged with any of these tag ids */
+  tagIds?: PostTagId[]
+  /** Filter to entries tagged with any of these tag names (case-insensitive) */
+  tags?: string[]
   /** Cursor-based pagination */
   cursor?: string
   /** Number of items to return */
@@ -117,6 +137,8 @@ export interface ChangelogEntryWithDetails {
   linkedPosts: ChangelogLinkedPost[]
   /** Attached categories (labels) */
   categories: ChangelogCategorySummary[]
+  /** Attached tags (reusing the shared `tags` entity) */
+  tags: ChangelogTag[]
   /** Computed status based on publishedAt */
   status: 'draft' | 'scheduled' | 'published'
   /** In-app view count. Email open/click tracking is out of scope. */
@@ -177,6 +199,7 @@ export interface PublicChangelogEntry {
   featuredImageUrl: string | null
   linkedPosts: PublicChangelogLinkedPost[]
   categories: ChangelogCategorySummary[]
+  tags: ChangelogTag[]
 }
 
 /**

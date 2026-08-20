@@ -13,7 +13,8 @@ import { publishedAtToPublishState } from '@/lib/shared/schemas/changelog'
 import { parseTypeIdArray } from '@/lib/server/domains/api/validation'
 import { db, principal, eq } from '@/lib/server/db'
 import { PERMISSIONS } from '@/lib/shared/permissions'
-import type { PostId } from '@quackback/ids'
+import { isValidTypeId } from '@quackback/ids'
+import type { PostId, PostTagId } from '@quackback/ids'
 import { formatChangelogResponse } from './-serialize'
 
 // Input validation schema
@@ -22,6 +23,7 @@ const createChangelogSchema = z.object({
   content: z.string().min(1, 'Content is required'),
   publishedAt: z.string().datetime().optional(),
   linkedPostIds: z.array(z.string()).optional(),
+  tagIds: z.array(z.string()).optional(),
 })
 
 export const Route = createFileRoute('/api/v1/changelog/')({
@@ -49,7 +51,24 @@ export const Route = createFileRoute('/api/v1/changelog/')({
             status = 'draft'
           }
 
-          const result = await listChangelogs({ status, cursor, limit })
+          // Tag filters: `tags` (comma-separated names) and `tagIds`
+          // (comma-separated typeids, invalid ones dropped) — mirrors
+          // /api/v1/posts' tagIds query-param handling.
+          const tagsParam = url.searchParams.get('tags') ?? undefined
+          const tagIdsParam = url.searchParams.get('tagIds') ?? undefined
+          const tags = tagsParam
+            ? tagsParam
+                .split(',')
+                .map((t) => t.trim())
+                .filter(Boolean)
+            : undefined
+          const tagIds = tagIdsParam
+            ? (tagIdsParam
+                .split(',')
+                .filter((id) => id && isValidTypeId(id, 'post_tag')) as PostTagId[])
+            : undefined
+
+          const result = await listChangelogs({ status, tagIds, tags, cursor, limit })
 
           return successResponse(
             result.items.map((entry) => formatChangelogResponse(entry)),
@@ -104,6 +123,7 @@ export const Route = createFileRoute('/api/v1/changelog/')({
                 'post',
                 'linked post IDs'
               ),
+              tagIds: parseTypeIdArray<PostTagId>(parsed.data.tagIds, 'post_tag', 'tag IDs'),
             },
             {
               principalId: authResult.principalId,

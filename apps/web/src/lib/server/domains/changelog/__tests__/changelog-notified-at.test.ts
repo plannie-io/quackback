@@ -49,11 +49,23 @@ vi.mock('@/lib/server/db', async (importOriginal) => ({
         return { where: () => p }
       },
     }),
-    select: () => ({
-      from: () => ({
-        where: () => ({ orderBy: () => ({ limit: () => Promise.resolve(mockDueRows) }) }),
-      }),
-    }),
+    // Two distinct chains share this mock: the reconciler's due-entries
+    // query (`.from().where().orderBy().limit()`) and the tag hydrator's
+    // (`.from().innerJoin().where().orderBy()`, awaited without `.limit()`).
+    // `.orderBy()` here resolves to `[]` directly (satisfying the tag path)
+    // while also carrying `.limit()` for the due-entries path.
+    select: () => {
+      const chain: Record<string, unknown> = {}
+      chain.from = () => chain
+      chain.innerJoin = () => chain
+      chain.where = () => chain
+      chain.orderBy = () => {
+        const p = Promise.resolve([]) as Promise<unknown[]> & { limit: () => Promise<unknown[]> }
+        p.limit = () => Promise.resolve(mockDueRows)
+        return p
+      }
+      return chain
+    },
     delete: () => ({ where: vi.fn().mockResolvedValue(undefined) }),
   },
   eq: vi.fn(),

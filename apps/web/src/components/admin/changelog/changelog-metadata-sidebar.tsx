@@ -1,6 +1,6 @@
 import { SidebarContainer, SidebarSkeleton } from '@/components/shared/sidebar-primitives'
 import { ChangelogMetadataSidebarContent } from './changelog-metadata-sidebar-content'
-import type { PostId, ChangelogCategoryId, SegmentId } from '@quackback/ids'
+import type { PostId, ChangelogCategoryId, PostTagId, SegmentId } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 
 export { SidebarSkeleton as ChangelogMetadataSidebarSkeleton }
@@ -12,6 +12,8 @@ interface ChangelogMetadataSidebarProps {
   onLinkedPostsChange: (postIds: PostId[]) => void
   categoryIds: ChangelogCategoryId[]
   onCategoriesChange: (categoryIds: ChangelogCategoryId[]) => void
+  tagIds: PostTagId[]
+  onTagsChange: (tagIds: PostTagId[]) => void
   notify: boolean
   onNotifyChange: (notify: boolean) => void
   /** Publish-notification targeting; empty = notify every subscriber. */
@@ -33,6 +35,8 @@ export function ChangelogMetadataSidebar({
   onLinkedPostsChange,
   categoryIds,
   onCategoriesChange,
+  tagIds,
+  onTagsChange,
   notify,
   onNotifyChange,
   segmentIds,
@@ -54,6 +58,8 @@ export function ChangelogMetadataSidebar({
         onLinkedPostsChange={onLinkedPostsChange}
         categoryIds={categoryIds}
         onCategoriesChange={onCategoriesChange}
+        tagIds={tagIds}
+        onTagsChange={onTagsChange}
         notify={notify}
         onNotifyChange={onNotifyChange}
         segmentIds={segmentIds}

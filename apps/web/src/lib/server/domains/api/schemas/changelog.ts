@@ -35,6 +35,22 @@ const LinkedPostIdsSchema = z
     example: ['post_01h455vb4pex5vsknk084sn02q'],
   })
 
+// Tag schema (reuses the workspace's shared `tags` entity — same one posts use)
+const ChangelogTagSchema = z.object({
+  id: TypeIdSchema.meta({ example: 'post_tag_01h455vb4pex5vsknk084sn02q' }),
+  name: z.string().meta({ example: 'App' }),
+  color: HexColorSchema,
+})
+
+const TagIdsSchema = z
+  .array(TypeIdSchema)
+  .optional()
+  .meta({
+    description:
+      'Tag IDs to attach to this entry (reuses the shared `tags` entity). On update, replaces the existing set; an empty array detaches all.',
+    example: ['post_tag_01h455vb4pex5vsknk084sn02q'],
+  })
+
 // Changelog entry schema (API response)
 const ChangelogEntrySchema = z.object({
   id: TypeIdSchema.meta({ example: 'changelog_01h455vb4pex5vsknk084sn02q' }),
@@ -50,6 +66,9 @@ const ChangelogEntrySchema = z.object({
   updatedAt: TimestampSchema,
   linkedPosts: z.array(LinkedPostSchema).meta({
     description: 'Posts linked to this changelog entry',
+  }),
+  tags: z.array(ChangelogTagSchema).meta({
+    description: 'Tags attached to this changelog entry',
   }),
 })
 
@@ -68,6 +87,7 @@ const CreateChangelogEntrySchema = z
       .optional()
       .meta({ description: 'Publish date (omit to save as draft)' }),
     linkedPostIds: LinkedPostIdsSchema,
+    tagIds: TagIdsSchema,
   })
   .meta({ description: 'Create changelog entry request body' })
 
@@ -86,6 +106,7 @@ const UpdateChangelogEntrySchema = z
         'Portal display override for published entries. Null clears override. Must not be in the future.',
     }),
     linkedPostIds: LinkedPostIdsSchema,
+    tagIds: TagIdsSchema,
   })
   .meta({ description: 'Update changelog entry request body' })
 
@@ -121,6 +142,18 @@ registerPath('/changelog', {
         in: 'query',
         schema: { type: 'integer', default: 20, maximum: 100 },
         description: 'Items per page',
+      },
+      {
+        name: 'tags',
+        in: 'query',
+        schema: { type: 'string' },
+        description: 'Filter by tag names (comma-separated, case-insensitive)',
+      },
+      {
+        name: 'tagIds',
+        in: 'query',
+        schema: { type: 'string' },
+        description: 'Filter by tag IDs (comma-separated)',
       },
     ],
     responses: {

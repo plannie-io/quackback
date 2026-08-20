@@ -5,7 +5,14 @@
  */
 
 import { createServerFn } from '@tanstack/react-start'
-import type { BoardId, ChangelogCategoryId, ChangelogId, PostId, SegmentId } from '@quackback/ids'
+import type {
+  BoardId,
+  ChangelogCategoryId,
+  ChangelogId,
+  PostId,
+  PostTagId,
+  SegmentId,
+} from '@quackback/ids'
 // Note: BoardId is only used for searchShippedPosts filtering
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { NotFoundError } from '@/lib/shared/errors'
@@ -67,6 +74,7 @@ export const createChangelogFn = createServerFn({ method: 'POST' })
         contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : null,
         linkedPostIds: (data.linkedPostIds ?? []) as PostId[],
         categoryIds: data.categoryIds as ChangelogCategoryId[] | undefined,
+        tagIds: data.tagIds as PostTagId[] | undefined,
         publishState: data.publishState as PublishState,
         ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
         ...(data.featuredImageUrl !== undefined && { featuredImageUrl: data.featuredImageUrl }),
@@ -103,6 +111,7 @@ export const updateChangelogFn = createServerFn({ method: 'POST' })
       contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : undefined,
       linkedPostIds: data.linkedPostIds as PostId[] | undefined,
       categoryIds: data.categoryIds as ChangelogCategoryId[] | undefined,
+      tagIds: data.tagIds as PostTagId[] | undefined,
       publishState: data.publishState as PublishState | undefined,
       ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
       ...(data.featuredImageUrl !== undefined && { featuredImageUrl: data.featuredImageUrl }),
@@ -165,6 +174,8 @@ export const listChangelogsFn = createServerFn({ method: 'GET' })
 
     const result = await listChangelogs({
       status: data.status,
+      tagIds: data.tagIds as PostTagId[] | undefined,
+      tags: data.tags,
       cursor: data.cursor,
       limit: data.limit,
     })
@@ -252,6 +263,7 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
       {
         cursor: data.cursor,
         limit: data.limit,
+        tags: data.tags,
       },
       actor
     )

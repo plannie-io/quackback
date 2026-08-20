@@ -38,6 +38,7 @@ const { GET, POST } = (Route as unknown as { options: RouteOpts }).options.serve
 
 const ENTRY_ID = 'changelog_01h455vb4pex5vsknk084sn02q'
 const POST_A = 'post_01h455vb4pex5vsknk084sn02q'
+const TAG_A = 'post_tag_01h455vb4pex5vsknk084sn02q'
 
 const LINKED_POST = {
   id: POST_A,
@@ -45,6 +46,8 @@ const LINKED_POST = {
   voteCount: 4,
   status: { name: 'Shipped', color: '#22c55e' },
 }
+
+const TAG = { id: TAG_A, name: 'App', color: '#6b7280' }
 
 function entry(overrides: Record<string, unknown> = {}) {
   return {
@@ -57,6 +60,7 @@ function entry(overrides: Record<string, unknown> = {}) {
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     linkedPosts: [LINKED_POST],
+    tags: [TAG],
     ...overrides,
   }
 }
@@ -130,6 +134,91 @@ describe('POST /api/v1/changelog — linked posts', () => {
         title: 'Dark mode',
         content: 'We shipped dark mode.',
         linkedPostIds: ['not-a-post'],
+      }),
+    })
+
+    expect(res.status).toBe(400)
+    expect(mockCreateChangelog).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /api/v1/changelog — tags', () => {
+  it('includes tags on each listed entry', async () => {
+    const res = await GET({ request: new Request('http://t/api/v1/changelog') })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data[0].tags).toEqual([TAG])
+  })
+
+  it('returns an empty tags array when the entry has none', async () => {
+    mockListChangelogs.mockResolvedValue({
+      items: [entry({ tags: [] })],
+      nextCursor: null,
+      hasMore: false,
+    })
+
+    const res = await GET({ request: new Request('http://t/api/v1/changelog') })
+    const json = await res.json()
+    expect(json.data[0].tags).toEqual([])
+  })
+
+  it('parses ?tags= (comma-separated names) and forwards to listChangelogs', async () => {
+    const res = await GET({
+      request: new Request('http://t/api/v1/changelog?tags=App,Blog'),
+    })
+    expect(res.status).toBe(200)
+    expect(mockListChangelogs).toHaveBeenCalledTimes(1)
+    expect(mockListChangelogs.mock.calls[0][0]).toMatchObject({
+      tags: ['App', 'Blog'],
+    })
+  })
+
+  it('parses ?tagIds= (comma-separated typeids) and forwards to listChangelogs', async () => {
+    const res = await GET({
+      request: new Request(`http://t/api/v1/changelog?tagIds=${TAG_A}`),
+    })
+    expect(res.status).toBe(200)
+    expect(mockListChangelogs.mock.calls[0][0]).toMatchObject({
+      tagIds: [TAG_A],
+    })
+  })
+
+  it('drops malformed tagIds instead of rejecting the request', async () => {
+    const res = await GET({
+      request: new Request(`http://t/api/v1/changelog?tagIds=not-a-tag,${TAG_A}`),
+    })
+    expect(res.status).toBe(200)
+    expect(mockListChangelogs.mock.calls[0][0]).toMatchObject({
+      tagIds: [TAG_A],
+    })
+  })
+})
+
+describe('POST /api/v1/changelog — tags', () => {
+  it('forwards tagIds to createChangelog and echoes tags', async () => {
+    const res = await POST({
+      request: postRequest({
+        title: 'Dark mode',
+        content: 'We shipped dark mode.',
+        tagIds: [TAG_A],
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    expect(mockCreateChangelog.mock.calls[0][0]).toMatchObject({
+      title: 'Dark mode',
+      tagIds: [TAG_A],
+    })
+    const json = await res.json()
+    expect(json.data.tags).toEqual([TAG])
+  })
+
+  it('rejects a malformed tagId without calling createChangelog', async () => {
+    const res = await POST({
+      request: postRequest({
+        title: 'Dark mode',
+        content: 'We shipped dark mode.',
+        tagIds: ['not-a-tag'],
       }),
     })
 

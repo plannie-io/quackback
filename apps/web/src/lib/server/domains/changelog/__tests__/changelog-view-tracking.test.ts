@@ -51,10 +51,16 @@ beforeEach(() => {
   mockSet.mockReturnValue({ where: mockWhere })
   mockUpdate.mockReturnValue({ set: mockSet })
   // db.select(...).from(...).innerJoin(...).innerJoin(...).where(...) => []
+  // The tag hydrator chains an extra `.orderBy()` onto `.where()` — give
+  // the resolved promise both shapes.
   const chain: Record<string, unknown> = {}
   chain.from = () => chain
   chain.innerJoin = () => chain
-  chain.where = () => Promise.resolve([])
+  chain.where = () => {
+    const p = Promise.resolve([]) as Promise<unknown[]> & { orderBy: () => Promise<unknown[]> }
+    p.orderBy = () => Promise.resolve([])
+    return p
+  }
   mockSelect.mockReturnValue(chain)
 })
 

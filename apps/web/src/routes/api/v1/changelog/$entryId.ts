@@ -15,7 +15,7 @@ import {
 } from '@/lib/server/domains/changelog/changelog.service'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 import { PERMISSIONS } from '@/lib/shared/permissions'
-import type { ChangelogId, PostId } from '@quackback/ids'
+import type { ChangelogId, PostId, PostTagId } from '@quackback/ids'
 import { formatChangelogResponse } from './-serialize'
 
 // Input validation schema
@@ -25,6 +25,7 @@ const updateChangelogSchema = z.object({
   publishedAt: z.string().datetime().nullable().optional(),
   displayDate: z.string().datetime().nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
+  tagIds: z.array(z.string()).optional(),
 })
 
 export const Route = createFileRoute('/api/v1/changelog/$entryId')({
@@ -93,6 +94,7 @@ export const Route = createFileRoute('/api/v1/changelog/$entryId')({
             'post',
             'linked post IDs'
           )
+          const tagIds = parseTypeIdArray<PostTagId>(parsed.data.tagIds, 'post_tag', 'tag IDs')
 
           const updated = await updateChangelog(entryId, {
             title: parsed.data.title,
@@ -103,6 +105,7 @@ export const Route = createFileRoute('/api/v1/changelog/$entryId')({
                 parsed.data.displayDate === null ? null : new Date(parsed.data.displayDate),
             }),
             ...(linkedPostIds !== undefined && { linkedPostIds }),
+            ...(tagIds !== undefined && { tagIds }),
           })
 
           return successResponse(formatChangelogResponse(updated))

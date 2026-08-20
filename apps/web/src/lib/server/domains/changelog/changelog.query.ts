@@ -22,6 +22,7 @@ import {
 import type { BoardId, ChangelogId, PrincipalId, PostId, PostStatusId } from '@quackback/ids'
 import { computeStatus } from './changelog.service'
 import { getCategoriesForEntries } from './changelog-category.service'
+import { getTagsForEntries, tagFilterCondition } from './changelog-tag.service'
 import type {
   ListChangelogParams,
   ChangelogEntryWithDetails,
@@ -37,11 +38,17 @@ import type {
  * @returns Paginated list of changelog entries
  */
 export async function listChangelogs(params: ListChangelogParams): Promise<ChangelogListResult> {
-  const { status = 'all', cursor, limit = 20 } = params
+  const { status = 'all', tagIds, tags, cursor, limit = 20 } = params
   const now = new Date()
 
   // Build where conditions - always exclude soft-deleted entries
   const conditions: SQL<unknown>[] = [isNull(changelogEntries.deletedAt)]
+
+  // Filter by tag (id or case-insensitive name)
+  const tagCondition = tagFilterCondition({ tagIds, tags })
+  if (tagCondition) {
+    conditions.push(tagCondition)
+  }
 
   // Filter by status
   if (status === 'draft') {
@@ -150,10 +157,14 @@ export async function listChangelogs(params: ListChangelogParams): Promise<Chang
   // Categories (labels) for all entries.
   const categoriesMap = await getCategoriesForEntries(entryIds)
 
+  // Tags (reusing the shared `tags` entity) for all entries.
+  const tagsMap = await getTagsForEntries(entryIds)
+
   // Transform to output format
   const result: ChangelogEntryWithDetails[] = items.map((entry) => {
     const entryLinkedPosts = linkedPostsMap.get(entry.id) ?? []
     const entryCategories = categoriesMap.get(entry.id) ?? []
+    const entryTags = tagsMap.get(entry.id) ?? []
     return {
       id: entry.id,
       title: entry.title,
@@ -175,6 +186,7 @@ export async function listChangelogs(params: ListChangelogParams): Promise<Chang
         status: lp.post.statusId ? (statusMap.get(lp.post.statusId) ?? null) : null,
       })),
       categories: entryCategories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
+      tags: entryTags,
       status: computeStatus(entry.publishedAt),
     }
   })

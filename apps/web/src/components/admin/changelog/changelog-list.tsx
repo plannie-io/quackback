@@ -56,7 +56,7 @@ export function ChangelogList() {
   })
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery(
-    changelogQueries.list({ status: filters.status })
+    changelogQueries.list({ status: filters.status, tagIds: filters.tags })
   )
 
   const loadMoreRef = useInfiniteScroll({
@@ -142,6 +142,8 @@ export function ChangelogList() {
           <ChangelogFiltersPanel
             status={filters.status}
             onStatusChange={(status) => setFilters({ status })}
+            tags={filters.tags}
+            onTagsChange={(tags) => setFilters({ tags })}
           />
         }
         hasActiveFilters={hasActiveFilters}
@@ -196,6 +198,7 @@ export function ChangelogList() {
                       createdAt={entry.createdAt}
                       author={entry.author}
                       linkedPosts={entry.linkedPosts}
+                      tags={entry.tags}
                       onEdit={handleEdit}
                       onDelete={handleDelete}
                     />

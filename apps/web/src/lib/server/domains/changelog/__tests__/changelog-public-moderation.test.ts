@@ -146,7 +146,13 @@ function chainResolving(rows: unknown[]): unknown {
   const chain: Record<string, unknown> = {}
   chain.from = () => chain
   chain.innerJoin = () => chain
-  chain.where = () => Promise.resolve(rows)
+  // `.where()` is awaited directly by most callers, but the tag hydrator
+  // chains an extra `.orderBy()` — make the resolved promise carry both.
+  chain.where = () => {
+    const p = Promise.resolve(rows) as Promise<unknown[]> & { orderBy: () => Promise<unknown[]> }
+    p.orderBy = () => Promise.resolve(rows)
+    return p
+  }
   return chain
 }
 
@@ -162,6 +168,9 @@ function entriesListChain(rows: unknown[]): unknown {
 beforeEach(() => {
   vi.clearAllMocks()
   mockStatusesFindMany.mockResolvedValue([])
+  // Fallback for the tag hydrator's `db.select()` call — each test's
+  // `mockReturnValueOnce` (below) covers the linked-posts query only.
+  mockSelect.mockReturnValue(chainResolving([]))
 })
 
 describe('getPublicChangelogById — effective display date', () => {
@@ -200,6 +209,8 @@ describe('getPublicChangelogById — moderation state filter', () => {
       candidateRow({ id: 'post_arch', moderationState: 'archived' }),
       candidateRow({ id: 'post_closed', moderationState: 'closed' }),
     ]
+    // getTagsForEntries runs before the linked-posts query.
+    mockSelect.mockReturnValueOnce(chainResolving([]))
     mockSelect.mockReturnValueOnce(chainResolving(applySqlFilter(candidates)))
 
     const result = await getPublicChangelogById('cl_1' as ChangelogId)
@@ -224,6 +235,8 @@ describe('getPublicChangelogById — moderation state filter', () => {
         deletedAt: new Date('2026-02-01'),
       }),
     ]
+    // getTagsForEntries runs before the linked-posts query.
+    mockSelect.mockReturnValueOnce(chainResolving([]))
     mockSelect.mockReturnValueOnce(chainResolving(applySqlFilter(candidates)))
 
     const result = await getPublicChangelogById('cl_1' as ChangelogId)
@@ -300,6 +313,8 @@ describe('public changelog — board audience filter', () => {
         audience: { kind: 'segments', segmentIds: ['seg_a'] },
       }),
     ]
+    // getTagsForEntries runs before the linked-posts query.
+    mockSelect.mockReturnValueOnce(chainResolving([]))
     mockSelect.mockReturnValueOnce(chainResolving(applySqlFilter(candidates)))
 
     const result = await getPublicChangelogById('cl_1' as ChangelogId)

@@ -57,6 +57,8 @@ vi.mock('@/lib/server/db', () => ({
   changelogEntryPosts: { changelogEntryId: 'changelog_entry_id', postId: 'post_id' },
   changelogEntryCategories: { changelogEntryId: 'changelog_entry_id', categoryId: 'category_id' },
   changelogCategories: { id: 'id', name: 'name' },
+  changelogEntryTags: { changelogEntryId: 'changelog_entry_id', tagId: 'tag_id' },
+  postTags: { id: 'id', name: 'name', color: 'color', deletedAt: 'deleted_at' },
   posts: {
     id: 'posts.id',
     title: 'posts.title',
@@ -97,7 +99,13 @@ function selectChainResolving(rows: unknown[]): unknown {
   const chain: Record<string, unknown> = {}
   chain.from = () => chain
   chain.innerJoin = () => chain
-  chain.where = () => Promise.resolve(rows)
+  // `.where()` is awaited directly by most callers, but the tag hydrator
+  // chains an extra `.orderBy()` — make the resolved promise carry both.
+  chain.where = () => {
+    const p = Promise.resolve(rows) as Promise<unknown[]> & { orderBy: () => Promise<unknown[]> }
+    p.orderBy = () => Promise.resolve(rows)
+    return p
+  }
   return chain
 }
 

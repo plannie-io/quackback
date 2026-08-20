@@ -1,10 +1,15 @@
+import { useQuery } from '@tanstack/react-query'
 import { FilterSection } from '@/components/shared/filter-section'
+import { toggleItem } from '@/components/shared/filter-utils'
+import { adminQueries } from '@/lib/client/queries/admin'
 import { cn } from '@/lib/shared/utils'
 import type { ChangelogStatusFilter } from './use-changelog-filters'
 
 interface ChangelogFiltersProps {
   status: ChangelogStatusFilter
   onStatusChange: (status: ChangelogStatusFilter) => void
+  tags?: string[]
+  onTagsChange?: (tags: string[] | undefined) => void
 }
 
 const CHANGELOG_STATUSES = [
@@ -14,7 +19,18 @@ const CHANGELOG_STATUSES = [
   { id: 'published', name: 'Published', color: '#22c55e' }, // green
 ] as const
 
-export function ChangelogFiltersPanel({ status, onStatusChange }: ChangelogFiltersProps) {
+export function ChangelogFiltersPanel({
+  status,
+  onStatusChange,
+  tags,
+  onTagsChange,
+}: ChangelogFiltersProps) {
+  const { data: allTags = [] } = useQuery(adminQueries.tags())
+
+  const handleTagToggle = (tagId: string) => {
+    onTagsChange?.(toggleItem(tags, tagId))
+  }
+
   return (
     <div className="space-y-0">
       <FilterSection title="Status">
@@ -50,6 +66,32 @@ export function ChangelogFiltersPanel({ status, onStatusChange }: ChangelogFilte
           })}
         </div>
       </FilterSection>
+
+      {/* Tags Filter */}
+      {onTagsChange && allTags.length > 0 && (
+        <FilterSection title="Tags" defaultOpen={true}>
+          <div className="flex flex-wrap gap-1.5">
+            {allTags.map((tag) => {
+              const isSelected = tags?.includes(tag.id)
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => handleTagToggle(tag.id)}
+                  className={cn(
+                    'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors',
+                    isSelected
+                      ? 'bg-foreground text-background'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  )}
+                >
+                  {tag.name}
+                </button>
+              )
+            })}
+          </div>
+        </FilterSection>
+      )}
     </div>
   )
 }

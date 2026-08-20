@@ -15,7 +15,7 @@ import {
   TrashIcon,
   LinkIcon,
 } from '@heroicons/react/24/outline'
-import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
+import type { ChangelogId, PrincipalId, PostId, PostTagId } from '@quackback/ids'
 import { stripMarkdownPreview } from '@/lib/shared/utils'
 
 interface ChangelogListItemProps {
@@ -35,6 +35,11 @@ interface ChangelogListItemProps {
     id: PostId
     title: string
     voteCount: number
+  }>
+  tags?: Array<{
+    id: PostTagId
+    name: string
+    color: string
   }>
   onEdit?: (id: ChangelogId) => void
   onDelete?: (id: ChangelogId) => void
@@ -56,6 +61,7 @@ export function ChangelogListItem({
   createdAt,
   author,
   linkedPosts,
+  tags = [],
   onEdit,
   onDelete,
 }: ChangelogListItemProps) {
@@ -76,8 +82,23 @@ export function ChangelogListItem({
     >
       {/* Content */}
       <div className="flex-1 min-w-0">
-        {/* Status badge */}
-        <StatusBadge name={config.label} color={config.color} className="mb-1" />
+        {/* Status badge + tag chips */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+          <StatusBadge name={config.label} color={config.color} />
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground"
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full shrink-0"
+                style={{ backgroundColor: tag.color }}
+                aria-hidden="true"
+              />
+              {tag.name}
+            </span>
+          ))}
+        </div>
 
         {/* Title */}
         <h3 className="font-semibold text-base text-foreground line-clamp-1">{title}</h3>

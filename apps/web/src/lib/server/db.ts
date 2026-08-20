@@ -226,6 +226,8 @@ export {
   changelogEntriesRelations,
   changelogEntryPosts,
   changelogEntryPostsRelations,
+  changelogEntryTags,
+  changelogEntryTagsRelations,
   changelogCategories,
   changelogCategoriesRelations,
   changelogEntryCategories,

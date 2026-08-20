@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
 import { DateTimePicker } from '@/components/ui/datetime-picker'
 import { useQuery } from '@tanstack/react-query'
 import { searchShippedPostsFn } from '@/lib/server/functions/changelog'
@@ -29,12 +30,19 @@ import {
 import { ChangelogCategorySelect } from './changelog-category-select'
 import { SegmentMultiSelect } from '@/components/admin/segments/segment-multi-select'
 import { listSegmentsFn } from '@/lib/server/functions/admin'
+import { adminQueries } from '@/lib/client/queries/admin'
 import { changelogSettingsQueries } from '@/lib/client/queries/changelog'
 import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
 import { cn, tomorrowAt } from '@/lib/shared/utils'
-import type { PostId, ChangelogCategoryId, SegmentId } from '@quackback/ids'
+import type { PostId, ChangelogCategoryId, PostTagId, SegmentId } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
-import { TagIcon, EnvelopeIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import {
+  TagIcon,
+  HashtagIcon,
+  EnvelopeIcon,
+  PhotoIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline'
 
 interface ChangelogMetadataSidebarContentProps {
   publishState: PublishState
@@ -43,6 +51,8 @@ interface ChangelogMetadataSidebarContentProps {
   onLinkedPostsChange: (postIds: PostId[]) => void
   categoryIds: ChangelogCategoryId[]
   onCategoriesChange: (categoryIds: ChangelogCategoryId[]) => void
+  tagIds: PostTagId[]
+  onTagsChange: (tagIds: PostTagId[]) => void
   notify: boolean
   onNotifyChange: (notify: boolean) => void
   /** Publish-notification targeting; empty = notify every subscriber. */
@@ -70,6 +80,8 @@ export function ChangelogMetadataSidebarContent({
   onLinkedPostsChange,
   categoryIds,
   onCategoriesChange,
+  tagIds,
+  onTagsChange,
   notify,
   onNotifyChange,
   segmentIds = [],
@@ -95,6 +107,17 @@ export function ChangelogMetadataSidebarContent({
       onFeaturedImageChange(await uploadFeaturedImage(file))
     } finally {
       setFeaturedImageUploading(false)
+    }
+  }
+
+  // Tags — reuses the workspace's shared `tags` (post_tags) entity, same
+  // list the feedback inbox's tag filter/picker uses.
+  const { data: tags = [] } = useQuery(adminQueries.tags())
+  const handleToggleTag = (tagId: PostTagId) => {
+    if (tagIds.includes(tagId)) {
+      onTagsChange(tagIds.filter((id) => id !== tagId))
+    } else {
+      onTagsChange([...tagIds, tagId])
     }
   }
 
@@ -282,6 +305,36 @@ export function ChangelogMetadataSidebarContent({
         </SidebarRow>
         <ChangelogCategorySelect value={categoryIds} onChange={onCategoriesChange} />
       </div>
+
+      {/* Tags — reuses the shared `tags` entity; hidden when the workspace
+          hasn't defined any, same guard the feedback inbox tag picker uses. */}
+      {tags.length > 0 && (
+        <div className="space-y-2">
+          <SidebarRow icon={<HashtagIcon className="h-4 w-4" />} label="Tags">
+            {null}
+          </SidebarRow>
+          <div className="flex flex-wrap gap-2">
+            {tags.map((tag) => {
+              const isSelected = tagIds.includes(tag.id)
+              return (
+                <Badge
+                  key={tag.id}
+                  variant="secondary"
+                  className={cn(
+                    'cursor-pointer text-xs font-normal transition-colors',
+                    isSelected
+                      ? 'bg-foreground text-background hover:bg-foreground/90'
+                      : 'hover:bg-muted/80'
+                  )}
+                  onClick={() => handleToggleTag(tag.id)}
+                >
+                  {tag.name}
+                </Badge>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Featured image — hero rendered atop the public entry detail page */}
       <div className="space-y-2">

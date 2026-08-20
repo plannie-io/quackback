@@ -25,6 +25,12 @@ interface CategoryBadge {
   color: string
 }
 
+interface TagBadge {
+  id: string
+  name: string
+  color: string
+}
+
 interface ChangelogEntryDetailProps {
   id: ChangelogId
   title: string
@@ -34,6 +40,7 @@ interface ChangelogEntryDetailProps {
   featuredImageUrl: string | null
   linkedPosts: LinkedPost[]
   categories?: CategoryBadge[]
+  tags?: TagBadge[]
 }
 
 function formatDate(iso: string) {
@@ -52,6 +59,7 @@ export function ChangelogEntryDetail({
   featuredImageUrl,
   linkedPosts,
   categories = [],
+  tags = [],
 }: ChangelogEntryDetailProps) {
   return (
     <article>
@@ -88,6 +96,25 @@ export function ChangelogEntryDetail({
                   style={{ backgroundColor: category.color + '1a', color: category.color }}
                 >
                   {category.name}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Tag chips (name + color dot) */}
+          {tags.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {tags.map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground"
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: tag.color }}
+                    aria-hidden="true"
+                  />
+                  {tag.name}
                 </span>
               ))}
             </div>

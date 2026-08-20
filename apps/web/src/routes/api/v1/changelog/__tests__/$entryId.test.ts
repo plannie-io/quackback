@@ -32,6 +32,8 @@ const { GET, PATCH } = (Route as unknown as { options: RouteOpts }).options.serv
 const ENTRY_ID = 'changelog_01h455vb4pex5vsknk084sn02q' as unknown as ChangelogId
 const POST_A = 'post_01h455vb4pex5vsknk084sn02q'
 const POST_B = 'post_01h455vb4pex5vsknk084sn02r'
+const TAG_A = 'post_tag_01h455vb4pex5vsknk084sn02q'
+const TAG_B = 'post_tag_01h455vb4pex5vsknk084sn02r'
 
 function linkedPost(id: string, title: string) {
   return {
@@ -40,6 +42,10 @@ function linkedPost(id: string, title: string) {
     voteCount: 4,
     status: { name: 'Shipped', color: '#22c55e' },
   }
+}
+
+function tag(id: string, name: string) {
+  return { id, name, color: '#6b7280' }
 }
 
 function baseEntry() {
@@ -53,6 +59,7 @@ function baseEntry() {
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     linkedPosts: [] as ReturnType<typeof linkedPost>[],
+    tags: [] as ReturnType<typeof tag>[],
   }
 }
 
@@ -118,6 +125,18 @@ describe('GET /api/v1/changelog/:entryId — markdown image output', () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.data.linkedPosts).toEqual([linkedPost(POST_A, 'Dark mode request')])
+  })
+
+  it('includes tags on the public API representation', async () => {
+    mockGetChangelogById.mockResolvedValue({
+      ...baseEntry(),
+      tags: [tag(TAG_A, 'App')],
+    })
+
+    const res = await GET({ request: new Request('http://t/'), params: { entryId: ENTRY_ID } })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data.tags).toEqual([tag(TAG_A, 'App')])
   })
 })
 
@@ -194,6 +213,74 @@ describe('PATCH /api/v1/changelog/:entryId — linkedPostIds', () => {
   it('rejects a wrong-prefix TypeID without calling updateChangelog', async () => {
     const res = await PATCH({
       request: patchRequest({ linkedPostIds: [ENTRY_ID] }),
+      params: { entryId: ENTRY_ID },
+    })
+
+    expect(res.status).toBe(400)
+    expect(mockUpdateChangelog).not.toHaveBeenCalled()
+  })
+})
+
+describe('PATCH /api/v1/changelog/:entryId — tagIds', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockWithApiKeyAuth.mockResolvedValue({ principalId: 'principal_x', role: 'team' })
+    mockUpdateChangelog.mockResolvedValue({
+      ...baseEntry(),
+      tags: [tag(TAG_A, 'App'), tag(TAG_B, 'Blog')],
+    })
+  })
+
+  it('forwards tagIds to updateChangelog', async () => {
+    const res = await PATCH({
+      request: patchRequest({ tagIds: [TAG_A, TAG_B] }),
+      params: { entryId: ENTRY_ID },
+    })
+
+    expect(res.status).toBe(200)
+    expect(mockUpdateChangelog).toHaveBeenCalledTimes(1)
+    expect(mockUpdateChangelog.mock.calls[0][1]).toMatchObject({
+      tagIds: [TAG_A, TAG_B],
+    })
+  })
+
+  it('forwards an empty tagIds array so existing tags can be cleared', async () => {
+    mockUpdateChangelog.mockResolvedValue(baseEntry())
+
+    const res = await PATCH({
+      request: patchRequest({ tagIds: [] }),
+      params: { entryId: ENTRY_ID },
+    })
+
+    expect(res.status).toBe(200)
+    expect(mockUpdateChangelog.mock.calls[0][1]).toMatchObject({ tagIds: [] })
+  })
+
+  it('does not send tagIds when the field is omitted', async () => {
+    const res = await PATCH({
+      request: patchRequest({ title: 'Renamed' }),
+      params: { entryId: ENTRY_ID },
+    })
+
+    expect(res.status).toBe(200)
+    const input = mockUpdateChangelog.mock.calls[0][1] as Record<string, unknown>
+    expect(input).not.toHaveProperty('tagIds')
+  })
+
+  it('echoes tags on the update response', async () => {
+    const res = await PATCH({
+      request: patchRequest({ tagIds: [TAG_A, TAG_B] }),
+      params: { entryId: ENTRY_ID },
+    })
+
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data.tags).toEqual([tag(TAG_A, 'App'), tag(TAG_B, 'Blog')])
+  })
+
+  it('rejects a malformed tagId without calling updateChangelog', async () => {
+    const res = await PATCH({
+      request: patchRequest({ tagIds: ['not-a-tag'] }),
       params: { entryId: ENTRY_ID },
     })
 

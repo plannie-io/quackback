@@ -6,9 +6,12 @@ export const Route = createFileRoute('/changelog/feed')({
     handlers: {
       /**
        * GET /changelog/feed
-       * Returns RSS 2.0 feed of published changelog entries
+       * Returns RSS 2.0 feed of published changelog entries. Accepts an
+       * optional `?tag=` filter (repeatable or comma-separated tag names,
+       * matched case-insensitively) — the surface Plannie's own backend
+       * consumes to show only "app"-tagged entries in the mobile bell.
        */
-      GET: async () => {
+      GET: async ({ request }) => {
         const [
           { config },
           { db, changelogEntries, and, desc, sql },
@@ -18,6 +21,7 @@ export const Route = createFileRoute('/changelog/feed')({
           { isChangelogAudienceGranted },
           { getOptionalAuth, policyActorFromAuth },
           { isFeatureEnabled },
+          { tagFilterCondition, getTagsForEntries },
         ] = await Promise.all([
           import('@/lib/server/config'),
           import('@/lib/server/db'),
@@ -27,7 +31,19 @@ export const Route = createFileRoute('/changelog/feed')({
           import('@/lib/server/domains/changelog/changelog.audience'),
           import('@/lib/server/functions/auth-helpers'),
           import('@/lib/server/domains/settings/settings.service'),
+          import('@/lib/server/domains/changelog/changelog-tag.service'),
         ])
+
+        // `?tag=` accepts either repeated params (`?tag=app&tag=blog`) or a
+        // single comma-separated value (`?tag=app,blog`); names are matched
+        // case-insensitively by tagFilterCondition.
+        const url = new URL(request.url)
+        const tagParams = url.searchParams.getAll('tag')
+        const tags = tagParams
+          .flatMap((t) => t.split(','))
+          .map((t) => t.trim())
+          .filter(Boolean)
+        const tagCondition = tags.length > 0 ? tagFilterCondition({ tags }) : undefined
 
         const effectiveDisplayDate = sql<Date>`coalesce(${changelogEntries.displayDate}, ${changelogEntries.publishedAt})`
 
@@ -47,15 +63,23 @@ export const Route = createFileRoute('/changelog/feed')({
         const audienceGranted = actor ? await isChangelogAudienceGranted(actor) : false
 
         const productEnabled = await isFeatureEnabled('changelog')
+        const feedConditions = [
+          ...publicChangelogConditions(new Date()),
+          ...(tagCondition ? [tagCondition] : []),
+        ]
         const entries =
           productEnabled && access.granted && audienceGranted
             ? await db
                 .select()
                 .from(changelogEntries)
-                .where(and(...publicChangelogConditions(new Date())))
+                .where(and(...feedConditions))
                 .orderBy(desc(effectiveDisplayDate))
                 .limit(50)
             : []
+
+        // Batched tag hydration for the (at most ~50) selected entries — one
+        // `<category>` element per tag inside each RSS `<item>`.
+        const tagsByEntry = await getTagsForEntries(entries.map((e) => e.id))
 
         // Per-caller portal-access decisions can't share a public CDN
         // cache: a granted caller would seed the cache with content that
@@ -79,6 +103,7 @@ export const Route = createFileRoute('/changelog/feed')({
             content: entry.content,
             publishedAt: entry.displayDate ?? entry.publishedAt!,
             link: `${baseUrl}/changelog/${entry.id}`,
+            tags: (tagsByEntry.get(entry.id) ?? []).map((t) => t.name),
           })),
         })
 
@@ -105,6 +130,7 @@ interface RssFeedOptions {
     content: string
     publishedAt: Date
     link: string
+    tags: string[]
   }>
 }
 
@@ -128,6 +154,9 @@ function buildRssFeed(options: RssFeedOptions): string {
     .map((entry) => {
       // Strip HTML for description, keep it short
       const truncatedContent = truncate(stripHtml(entry.content), 500)
+      const categories = entry.tags
+        .map((tag) => `      <category>${escapeXml(tag)}</category>`)
+        .join('\n')
 
       return `    <item>
       <title>${escapeXml(entry.title)}</title>
@@ -135,7 +164,7 @@ function buildRssFeed(options: RssFeedOptions): string {
       <guid isPermaLink="true">${escapeXml(entry.link)}</guid>
       <description>${escapeXml(truncatedContent)}</description>
       <pubDate>${formatRfc822Date(entry.publishedAt)}</pubDate>
-    </item>`
+${categories ? categories + '\n' : ''}    </item>`
     })
     .join('\n')
 

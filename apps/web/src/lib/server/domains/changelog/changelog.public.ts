@@ -16,10 +16,11 @@ import {
   inArray,
   sql,
 } from '@/lib/server/db'
-import type { ChangelogId, PostStatusId } from '@quackback/ids'
+import type { ChangelogId, PostStatusId, PostTagId } from '@quackback/ids'
 import { NotFoundError } from '@/lib/shared/errors'
 import { computeStatus } from './changelog.service'
 import { getCategoriesForEntries, categoryGateAllows } from './changelog-category.service'
+import { getTagsForEntries, tagFilterCondition } from './changelog-tag.service'
 import { ANONYMOUS_ACTOR, type Actor } from '@/lib/server/policy/types'
 import type { PublicChangelogEntry, PublicChangelogListResult } from './changelog.types'
 
@@ -96,6 +97,10 @@ export async function getPublicChangelogById(
     )
   }
 
+  // Tags (reusing the shared `tags` entity, soft-deleted tags excluded).
+  const tagsMap = await getTagsForEntries([id])
+  const tags = tagsMap.get(id) ?? []
+
   // Record the view (fire-and-forget — must never block or fail the read).
   // Same approach help-center articles use for their view counter.
   db.update(changelogEntries)
@@ -160,6 +165,7 @@ export async function getPublicChangelogById(
     publishedAt: entry.displayDate ?? entry.publishedAt,
     featuredImageUrl: entry.featuredImageUrl,
     categories: categories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
+    tags,
     linkedPosts: linkedPostRows.map((lp) => ({
       id: lp.postId,
       title: lp.postTitle,
@@ -181,13 +187,23 @@ export async function listPublicChangelogs(
   params: {
     cursor?: string
     limit?: number
+    /** Filter to entries tagged with any of these tag ids */
+    tagIds?: PostTagId[]
+    /** Filter to entries tagged with any of these tag names (case-insensitive) */
+    tags?: string[]
   },
   actor: Actor = ANONYMOUS_ACTOR
 ): Promise<PublicChangelogListResult> {
-  const { cursor, limit = 20 } = params
+  const { cursor, limit = 20, tagIds, tags } = params
   const now = new Date()
 
   const conditions = publicChangelogConditions(now)
+
+  // Filter by tag (id or case-insensitive name); excludes soft-deleted tags.
+  const tagCondition = tagFilterCondition({ tagIds, tags })
+  if (tagCondition) {
+    conditions.push(tagCondition)
+  }
 
   // Cursor-based pagination. The lookup does NOT filter on deletedAt:
   // if an admin deleted the cursor row between page load and "Load
@@ -285,6 +301,9 @@ export async function listPublicChangelogs(
   // publish ordering rather than reshuffling pagination around a rare gate.
   const categoriesByEntry = await getCategoriesForEntries(entryIds)
 
+  // Tags (reusing the shared `tags` entity, soft-deleted tags excluded).
+  const tagsByEntry = await getTagsForEntries(entryIds)
+
   // Transform to output format (no author info for public view)
   const result: PublicChangelogEntry[] = items
     .filter((entry) => entry.publishedAt !== null)
@@ -292,6 +311,7 @@ export async function listPublicChangelogs(
     .map((entry) => {
       const entryLinkedPosts = linkedPostsMap.get(entry.id) ?? []
       const entryCategories = categoriesByEntry.get(entry.id) ?? []
+      const entryTags = tagsByEntry.get(entry.id) ?? []
       return {
         id: entry.id,
         title: entry.title,
@@ -300,6 +320,7 @@ export async function listPublicChangelogs(
         publishedAt: entry.displayDate ?? entry.publishedAt!,
         featuredImageUrl: entry.featuredImageUrl,
         categories: entryCategories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
+        tags: entryTags,
         linkedPosts: entryLinkedPosts.map((lp) => ({
           id: lp.postId,
           title: lp.postTitle,

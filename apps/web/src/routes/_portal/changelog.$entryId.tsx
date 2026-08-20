@@ -69,6 +69,7 @@ function ChangelogEntryPage() {
           featuredImageUrl={entry.featuredImageUrl}
           linkedPosts={entry.linkedPosts}
           categories={entry.categories}
+          tags={entry.tags}
         />
       </div>
     </div>

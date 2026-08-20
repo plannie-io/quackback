@@ -7,6 +7,7 @@ const searchSchema = z.object({
   status: z.enum(['draft', 'scheduled', 'published']).optional(),
   entry: z.string().optional(), // Entry ID for modal view
   search: z.string().optional(),
+  tags: z.array(z.string()).optional(), // Tag ids to filter by
 })
 
 export const Route = createFileRoute('/admin/changelog')({

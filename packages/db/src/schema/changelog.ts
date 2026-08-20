@@ -94,6 +94,33 @@ export const changelogEntryPosts = pgTable(
   ]
 )
 
+// Junction table reusing the workspace's shared `tags` (post_tags) entity to
+// filter changelog entries by audience (e.g. "app" vs "blog" vs "internal") —
+// no new taxonomy. Shaped like changelogEntryPosts above: same composite
+// unique index + per-FK index style, inline `.references()` on both FK
+// columns (both auto-generated constraint names are <=63 chars, unlike
+// changelogEntryPosts' changelog_entry_id FK which needs the explicit
+// truncated name below). `tagId` imported from ./boards after this table's
+// own declarations to avoid a circular-import hazard the same way boards.ts
+// imports changelogEntries only after its own tables are done.
+export const changelogEntryTags = pgTable(
+  'changelog_entry_tags',
+  {
+    changelogEntryId: typeIdColumn('changelog')('changelog_entry_id')
+      .notNull()
+      .references(() => changelogEntries.id, { onDelete: 'cascade' }),
+    tagId: typeIdColumn('post_tag')('tag_id')
+      .notNull()
+      .references(() => postTags.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('changelog_entry_tags_pk').on(table.changelogEntryId, table.tagId),
+    index('changelog_entry_tags_changelog_entry_id_idx').on(table.changelogEntryId),
+    index('changelog_entry_tags_tag_id_idx').on(table.tagId),
+  ]
+)
+
 export const changelogEntriesRelations = relations(changelogEntries, ({ one, many }) => ({
   author: one(principal, {
     fields: [changelogEntries.principalId],
@@ -101,6 +128,7 @@ export const changelogEntriesRelations = relations(changelogEntries, ({ one, man
     relationName: 'changelogAuthor',
   }),
   linkedPosts: many(changelogEntryPosts),
+  tags: many(changelogEntryTags),
 }))
 
 export const changelogEntryPostsRelations = relations(changelogEntryPosts, ({ one }) => ({
@@ -111,5 +139,20 @@ export const changelogEntryPostsRelations = relations(changelogEntryPosts, ({ on
   post: one(posts, {
     fields: [changelogEntryPosts.postId],
     references: [posts.id],
+  }),
+}))
+
+// Relations defined after the postTags import to avoid a circular
+// dependency, mirroring the convention in boards.ts.
+import { postTags } from './boards'
+
+export const changelogEntryTagsRelations = relations(changelogEntryTags, ({ one }) => ({
+  changelogEntry: one(changelogEntries, {
+    fields: [changelogEntryTags.changelogEntryId],
+    references: [changelogEntries.id],
+  }),
+  tag: one(postTags, {
+    fields: [changelogEntryTags.tagId],
+    references: [postTags.id],
   }),
 }))

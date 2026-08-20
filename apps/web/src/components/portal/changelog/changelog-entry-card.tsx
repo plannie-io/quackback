@@ -24,6 +24,12 @@ interface CategoryBadge {
   color: string
 }
 
+interface TagBadge {
+  id: string
+  name: string
+  color: string
+}
+
 interface ChangelogEntryCardProps {
   id: ChangelogId
   title: string
@@ -32,6 +38,7 @@ interface ChangelogEntryCardProps {
   publishedAt: string
   linkedPosts: LinkedPost[]
   categories?: CategoryBadge[]
+  tags?: TagBadge[]
   className?: string
 }
 
@@ -51,6 +58,7 @@ export function ChangelogEntryCard({
   publishedAt,
   linkedPosts,
   categories = [],
+  tags = [],
   className,
 }: ChangelogEntryCardProps) {
   return (
@@ -79,6 +87,25 @@ export function ChangelogEntryCard({
                 style={{ backgroundColor: category.color + '1a', color: category.color }}
               >
                 {category.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Tag chips (name + color dot) */}
+        {tags.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground"
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: tag.color }}
+                  aria-hidden="true"
+                />
+                {tag.name}
               </span>
             ))}
           </div>
