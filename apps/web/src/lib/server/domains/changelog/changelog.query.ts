@@ -21,7 +21,7 @@ import {
 } from '@/lib/server/db'
 import type { BoardId, ChangelogId, PrincipalId, PostId, PostStatusId } from '@quackback/ids'
 import { computeStatus } from './changelog.service'
-import { getCategoriesForEntries } from './changelog-category.service'
+import { getCategoriesForEntries, categoryFilterCondition } from './changelog-category.service'
 import type {
   ListChangelogParams,
   ChangelogEntryWithDetails,
@@ -37,11 +37,17 @@ import type {
  * @returns Paginated list of changelog entries
  */
 export async function listChangelogs(params: ListChangelogParams): Promise<ChangelogListResult> {
-  const { status = 'all', cursor, limit = 20 } = params
+  const { status = 'all', categoryIds, categories, cursor, limit = 20 } = params
   const now = new Date()
 
   // Build where conditions - always exclude soft-deleted entries
   const conditions: SQL<unknown>[] = [isNull(changelogEntries.deletedAt)]
+
+  // Filter by category (label), by id and/or case-insensitive name
+  const categoryCondition = categoryFilterCondition({ categoryIds, categories })
+  if (categoryCondition) {
+    conditions.push(categoryCondition)
+  }
 
   // Filter by status
   if (status === 'draft') {
