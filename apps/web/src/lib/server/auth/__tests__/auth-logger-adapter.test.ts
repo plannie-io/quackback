@@ -61,4 +61,34 @@ describe('createAuthLogger', () => {
     logger.log?.('debug', 'noisy')
     expect(sink.debug).toHaveBeenCalledTimes(1)
   })
+
+  /**
+   * The case the suite above cannot see: a `vi.fn()` sink does not care what
+   * `this` is, so it passes whether the adapter calls the method on the sink
+   * or detaches it first. The real sink is a pino child whose methods read
+   * instance state off `this`; detached, they throw inside better-auth's
+   * request handling and every auth route answers HTTP 500.
+   */
+  it('calls the sink as a method, so a receiver-dependent logger works', () => {
+    const seen: Array<{ level: string; message: string }> = []
+    const sink = {
+      prefix: 'auth',
+      error(_payload: unknown, message: string) {
+        seen.push({ level: 'error', message: `${this.prefix}:${message}` })
+      },
+      warn(_payload: unknown, message: string) {
+        seen.push({ level: 'warn', message: `${this.prefix}:${message}` })
+      },
+      info(_payload: unknown, message: string) {
+        seen.push({ level: 'info', message: `${this.prefix}:${message}` })
+      },
+      debug(_payload: unknown, message: string) {
+        seen.push({ level: 'debug', message: `${this.prefix}:${message}` })
+      },
+    }
+
+    const logger = createAuthLogger(sink)
+    expect(() => logger.log?.('error', 'boom')).not.toThrow()
+    expect(seen).toEqual([{ level: 'error', message: 'auth:boom' }])
+  })
 })

@@ -49,8 +49,15 @@ export function createAuthLogger(sink: LogSink, level: AuthLogLevel = 'info') {
     level,
     disableColors: true,
     log: (level: AuthLogLevel, message: string, ...args: unknown[]) => {
-      const write = sink[level] ?? sink.info
-      write({ args: redactLogArgs(args) }, message)
+      // Called as a METHOD on `sink`, never as a detached function. pino's
+      // `error`/`warn`/`info` read instance state off `this` (`msgPrefixSym`
+      // among others), so `const write = sink[level]; write(...)` throws
+      // `undefined is not an object (evaluating 'this[msgPrefixSym]')` — and
+      // because better-auth calls this from inside its request handling, that
+      // throw surfaces as an unhandled HTTP 500 on every auth request that
+      // logs anything (ported from upstream 0255e3484).
+      const method = sink[level] ? level : 'info'
+      sink[method]({ args: redactLogArgs(args) }, message)
     },
   }
 }

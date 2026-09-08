@@ -461,6 +461,14 @@ async function createAuth() {
         sameSite: 'lax',
         secure: baseURL.startsWith('https://'),
       },
+      // better-auth >= 1.6.30 refuses an `x-forwarded-for` with more than one
+      // address unless `trustedProxies` is set, and Cloudflare + the ALB always
+      // produce two. Without a resolvable IP it warns and rate-limits every
+      // visitor in one shared per-path bucket. Cloudflare's `cf-connecting-ip`
+      // carries exactly the client address, so read that first.
+      ipAddress: {
+        ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'],
+      },
     },
 
     // Database hooks for OAuth user creation - creates member records
