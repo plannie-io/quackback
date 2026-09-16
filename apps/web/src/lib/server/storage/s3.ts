@@ -569,32 +569,34 @@ export interface S3ObjectResult {
   contentType: string
 }
 
+/** Lifetime of the presigned URL used for a single proxied read. */
+const PROXY_READ_PRESIGN_SECONDS = 300
+
 /**
  * Fetch an object from S3 and return its body stream and content type.
  * Used when S3_PROXY is enabled to stream file bytes through the server.
  */
 export async function getS3Object(key: string): Promise<S3ObjectResult> {
-  const s3Config = getS3Config()
-  const client = await getS3Client()
-  const { GetObjectCommand } = await getS3Module()
+  // Read through a short-lived presigned URL + the runtime's native `fetch`
+  // rather than `GetObjectCommand`. The SDK streams GetObject bodies over
+  // `node:https`, and Bun's compat layer for that stream can stop emitting
+  // `data`/`end` after enough requests (oven-sh/bun#27557): the proxy then
+  // hangs until the server's idle timeout and every later read of any object
+  // above a few tens of KB fails the same way until the process restarts.
+  // Presigning is pure computation; only the byte transfer changes transport.
+  const url = await generatePresignedGetUrl(key, PROXY_READ_PRESIGN_SECONDS)
+  const response = await fetch(url)
 
-  const command = new GetObjectCommand({
-    Bucket: s3Config.bucket,
-    Key: key,
-  })
-
-  const response = (await client.send(command)) as {
-    Body?: { transformToWebStream(): ReadableStream<Uint8Array> }
-    ContentType?: string
-  }
-
-  if (!response.Body) {
+  if (response.status === 404) {
     throw new Error(`S3 object not found: ${key}`)
+  }
+  if (!response.ok || !response.body) {
+    throw new Error(`S3 GetObject failed for ${key}: HTTP ${response.status}`)
   }
 
   return {
-    body: response.Body.transformToWebStream(),
-    contentType: response.ContentType || 'application/octet-stream',
+    body: response.body,
+    contentType: response.headers.get('content-type') || 'application/octet-stream',
   }
 }
 
