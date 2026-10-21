@@ -1,25 +1,16 @@
 /**
- * RSS feed: the category segment gate, plus the portal/audience/product gates
- * that already guarded it.
- *
- * The portal list and detail readers run the category gate, but the feed did
- * not — so an entry restricted to a segment was still readable by anyone who
- * fetched the RSS URL. These tests pin that hole shut.
+ * RSS feed: label output and the `?label=` filter, plus the gates that already
+ * guarded the feed.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ChangelogId } from '@quackback/ids'
 
-const GATE = { __gate: true }
-const PUBLIC_CONDITION = { __public: true }
-const ANONYMOUS = { principalType: 'anonymous' }
-
 const mockSelectLimit = vi.fn()
-const mockWhere = vi.fn()
-const mockCategoryGateCondition = vi.fn((..._args: unknown[]) => GATE)
+const mockCategoryFilterCondition = vi.fn()
+const mockGetCategoriesForEntries = vi.fn()
 const mockIsFeatureEnabled = vi.fn(async (..._args: unknown[]) => true)
 const mockResolvePortalAccess = vi.fn(async (..._args: unknown[]) => ({ granted: true }))
 const mockAudienceGranted = vi.fn(async (..._args: unknown[]) => true)
-const mockPolicyActorFromAuth = vi.fn(async (..._args: unknown[]): Promise<unknown> => ANONYMOUS)
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: vi.fn(() => (opts: unknown) => ({ options: opts })),
@@ -31,25 +22,21 @@ vi.mock('@/lib/server/config', () => ({
 
 vi.mock('@/lib/server/db', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/server/db')>()),
-  and: (...conditions: unknown[]) => ({ and: conditions }),
   db: {
     select: () => ({
       from: () => ({
-        where: (condition: unknown) => {
-          mockWhere(condition)
-          return {
-            orderBy: () => ({
-              limit: (...args: unknown[]) => mockSelectLimit(...args),
-            }),
-          }
-        },
+        where: () => ({
+          orderBy: () => ({
+            limit: (...args: unknown[]) => mockSelectLimit(...args),
+          }),
+        }),
       }),
     }),
   },
 }))
 
 vi.mock('@/lib/server/domains/changelog/changelog.public', () => ({
-  publicChangelogConditions: vi.fn(() => [PUBLIC_CONDITION]),
+  publicChangelogConditions: vi.fn(() => []),
 }))
 
 vi.mock('@/lib/server/settings-utils', () => ({
@@ -66,7 +53,7 @@ vi.mock('@/lib/server/domains/changelog/changelog.audience', () => ({
 
 vi.mock('@/lib/server/functions/auth-helpers', () => ({
   getOptionalAuth: vi.fn(async () => null),
-  policyActorFromAuth: (...args: unknown[]) => mockPolicyActorFromAuth(...args),
+  policyActorFromAuth: vi.fn(async () => ({ principalType: 'anonymous' })),
 }))
 
 vi.mock('@/lib/server/domains/settings/settings.service', () => ({
@@ -74,10 +61,10 @@ vi.mock('@/lib/server/domains/settings/settings.service', () => ({
 }))
 
 vi.mock('@/lib/server/domains/changelog/changelog-category.service', () => ({
-  categoryGateCondition: (...args: unknown[]) => mockCategoryGateCondition(...args),
+  categoryFilterCondition: (...args: unknown[]) => mockCategoryFilterCondition(...args),
+  getCategoriesForEntries: (...args: unknown[]) => mockGetCategoriesForEntries(...args),
 }))
 
-import { changelogEntries } from '@/lib/server/db'
 import { Route } from '../feed'
 
 type Handlers = { GET: (args: { request: Request }) => Promise<Response> }
@@ -86,18 +73,23 @@ const { GET } = (Route as unknown as { options: RouteOpts }).options.server.hand
 
 const ENTRY_A = 'changelog_01a' as unknown as ChangelogId
 
-function entryRow(id: ChangelogId) {
+function entryRow(id: ChangelogId, overrides: Record<string, unknown> = {}) {
   return {
     id,
     title: `Entry ${id}`,
     content: 'Body text',
     publishedAt: new Date('2026-01-01T00:00:00.000Z'),
     displayDate: null,
+    ...overrides,
   }
 }
 
-async function fetchFeed(): Promise<string> {
-  const res = await GET({ request: new Request('https://t.example/changelog/feed') })
+function category(name: string, segmentIds: string[] = []) {
+  return { id: `changelog_category_${name}`, name, color: '#000000', segmentIds }
+}
+
+async function fetchFeed(url = 'https://t.example/changelog/feed'): Promise<string> {
+  const res = await GET({ request: new Request(url) })
   return res.text()
 }
 
@@ -106,66 +98,94 @@ beforeEach(() => {
   mockIsFeatureEnabled.mockResolvedValue(true)
   mockResolvePortalAccess.mockResolvedValue({ granted: true })
   mockAudienceGranted.mockResolvedValue(true)
-  mockPolicyActorFromAuth.mockResolvedValue(ANONYMOUS)
-  mockSelectLimit.mockResolvedValue([entryRow(ENTRY_A)])
+  mockCategoryFilterCondition.mockReturnValue(undefined)
+  mockGetCategoriesForEntries.mockResolvedValue(new Map())
 })
 
-describe('changelog RSS feed — segment gate', () => {
-  it('applies the category segment gate to the feed query', async () => {
-    await fetchFeed()
+describe('changelog RSS feed — labels', () => {
+  it('renders one <category> element per label', async () => {
+    mockSelectLimit.mockResolvedValue([entryRow(ENTRY_A)])
+    mockGetCategoriesForEntries.mockResolvedValue(
+      new Map([[ENTRY_A, [category('releases'), category('fixes')]]])
+    )
 
-    expect(mockWhere).toHaveBeenCalledTimes(1)
-    expect(mockWhere).toHaveBeenCalledWith({ and: [PUBLIC_CONDITION, GATE] })
-  })
-
-  it('gates on the requesting actor and the entry id column', async () => {
-    const member = { principalType: 'user', segmentIds: ['segment_vip'] }
-    mockPolicyActorFromAuth.mockResolvedValue(member)
-
-    await fetchFeed()
-
-    expect(mockCategoryGateCondition).toHaveBeenCalledWith(member, changelogEntries.id)
-  })
-
-  it('gates anonymous fetchers as the anonymous actor', async () => {
-    await fetchFeed()
-
-    expect(mockCategoryGateCondition).toHaveBeenCalledWith(ANONYMOUS, changelogEntries.id)
-  })
-
-  it('renders the entries the gated query returns', async () => {
     const xml = await fetchFeed()
 
-    expect(xml).toContain(`<title>Entry ${ENTRY_A}</title>`)
+    expect(xml).toContain('<category>releases</category>')
+    expect(xml).toContain('<category>fixes</category>')
+  })
+
+  it('emits no <category> elements for an unlabelled entry', async () => {
+    mockSelectLimit.mockResolvedValue([entryRow(ENTRY_A)])
+
+    const xml = await fetchFeed()
+
+    expect(xml).toContain('<item>')
+    expect(xml).not.toContain('<category>')
+  })
+
+  it('escapes label names so a crafted label cannot break the XML', async () => {
+    mockSelectLimit.mockResolvedValue([entryRow(ENTRY_A)])
+    mockGetCategoriesForEntries.mockResolvedValue(
+      new Map([[ENTRY_A, [category('a & b </category><script>')]]])
+    )
+
+    const xml = await fetchFeed()
+
+    expect(xml).toContain('<category>a &amp; b &lt;/category&gt;&lt;script&gt;</category>')
+    expect(xml).not.toContain('<script>')
+  })
+
+  it('passes ?label= through to the filter, comma-separated or repeated', async () => {
+    mockSelectLimit.mockResolvedValue([])
+
+    await fetchFeed('https://t.example/changelog/feed?label=releases,fixes')
+    expect(mockCategoryFilterCondition).toHaveBeenCalledWith({
+      categories: ['releases', 'fixes'],
+    })
+
+    mockCategoryFilterCondition.mockClear()
+    await fetchFeed('https://t.example/changelog/feed?label=releases&label=fixes')
+    expect(mockCategoryFilterCondition).toHaveBeenCalledWith({
+      categories: ['releases', 'fixes'],
+    })
+  })
+
+  it('treats a blank ?label= as no filter rather than an empty-name match', async () => {
+    mockSelectLimit.mockResolvedValue([])
+
+    await fetchFeed('https://t.example/changelog/feed?label=%20,')
+
+    expect(mockCategoryFilterCondition).toHaveBeenCalledWith({ categories: undefined })
   })
 })
 
 describe('changelog RSS feed — existing gates still hold', () => {
   it('returns an empty feed when the changelog product is disabled', async () => {
     mockIsFeatureEnabled.mockResolvedValue(false)
+    mockSelectLimit.mockResolvedValue([entryRow(ENTRY_A)])
 
     const xml = await fetchFeed()
 
     expect(xml).not.toContain('<item>')
     expect(xml).toContain('<channel>')
-    expect(mockWhere).not.toHaveBeenCalled()
   })
 
   it('returns an empty feed when portal access is denied', async () => {
     mockResolvePortalAccess.mockResolvedValue({ granted: false })
+    mockSelectLimit.mockResolvedValue([entryRow(ENTRY_A)])
 
     const xml = await fetchFeed()
 
     expect(xml).not.toContain('<item>')
-    expect(mockWhere).not.toHaveBeenCalled()
   })
 
-  it('returns an empty feed when the audience gate denies the viewer', async () => {
+  it('returns an empty feed when the audience gate denies anonymous viewers', async () => {
     mockAudienceGranted.mockResolvedValue(false)
+    mockSelectLimit.mockResolvedValue([entryRow(ENTRY_A)])
 
     const xml = await fetchFeed()
 
     expect(xml).not.toContain('<item>')
-    expect(mockWhere).not.toHaveBeenCalled()
   })
 })

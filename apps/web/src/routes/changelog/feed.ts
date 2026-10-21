@@ -6,9 +6,12 @@ export const Route = createFileRoute('/changelog/feed')({
     handlers: {
       /**
        * GET /changelog/feed
-       * Returns RSS 2.0 feed of published changelog entries
+       * Returns RSS 2.0 feed of published changelog entries. Each item carries
+       * one `<category>` element per label, and an optional `?label=` filter
+       * (repeatable, or comma-separated) narrows the feed to those labels —
+       * so a consumer can subscribe to just "releases" without parsing titles.
        */
-      GET: async () => {
+      GET: async ({ request }) => {
         const [
           { config },
           { db, changelogEntries, and, desc, sql },
@@ -18,7 +21,7 @@ export const Route = createFileRoute('/changelog/feed')({
           { isChangelogAudienceGranted },
           { getOptionalAuth, policyActorFromAuth },
           { isFeatureEnabled },
-          { categoryGateCondition },
+          { categoryGateCondition, getCategoriesForEntries, categoryFilterCondition },
         ] = await Promise.all([
           import('@/lib/server/config'),
           import('@/lib/server/db'),
@@ -34,6 +37,18 @@ export const Route = createFileRoute('/changelog/feed')({
         const effectiveDisplayDate = sql<Date>`coalesce(${changelogEntries.displayDate}, ${changelogEntries.publishedAt})`
 
         const baseUrl = config.baseUrl
+
+        // `?label=` accepts repeated params (`?label=a&label=b`) or a single
+        // comma-separated value (`?label=a,b`); matching is case-insensitive.
+        const url = new URL(request.url)
+        const labelFilter = url.searchParams
+          .getAll('label')
+          .flatMap((value) => value.split(','))
+          .map((value) => value.trim())
+          .filter(Boolean)
+        const categoryCondition = categoryFilterCondition({
+          categories: labelFilter.length > 0 ? labelFilter : undefined,
+        })
 
         // Get workspace branding for feed title
         const branding = await getSettingsBrandingData()
@@ -62,12 +77,15 @@ export const Route = createFileRoute('/changelog/feed')({
                 .where(
                   and(
                     ...publicChangelogConditions(new Date()),
-                    categoryGateCondition(actor, changelogEntries.id)
+                    categoryGateCondition(actor, changelogEntries.id),
+                    ...(categoryCondition ? [categoryCondition] : [])
                   )
                 )
                 .orderBy(desc(effectiveDisplayDate))
                 .limit(50)
             : []
+
+        const categoriesByEntry = await getCategoriesForEntries(entries.map((entry) => entry.id))
 
         // Per-caller portal-access decisions can't share a public CDN
         // cache: a granted caller would seed the cache with content that
@@ -91,6 +109,7 @@ export const Route = createFileRoute('/changelog/feed')({
             content: entry.content,
             publishedAt: entry.displayDate ?? entry.publishedAt!,
             link: `${baseUrl}/changelog/${entry.id}`,
+            labels: (categoriesByEntry.get(entry.id) ?? []).map((category) => category.name),
           })),
         })
 
@@ -117,6 +136,8 @@ interface RssFeedOptions {
     content: string
     publishedAt: Date
     link: string
+    /** Label names, rendered as one `<category>` element each. */
+    labels: string[]
   }>
 }
 
@@ -141,12 +162,16 @@ function buildRssFeed(options: RssFeedOptions): string {
       // Strip HTML for description, keep it short
       const truncatedContent = truncate(stripHtml(entry.content), 500)
 
+      const categories = entry.labels
+        .map((label) => `\n      <category>${escapeXml(label)}</category>`)
+        .join('')
+
       return `    <item>
       <title>${escapeXml(entry.title)}</title>
       <link>${escapeXml(entry.link)}</link>
       <guid isPermaLink="true">${escapeXml(entry.link)}</guid>
       <description>${escapeXml(truncatedContent)}</description>
-      <pubDate>${formatRfc822Date(entry.publishedAt)}</pubDate>
+      <pubDate>${formatRfc822Date(entry.publishedAt)}</pubDate>${categories}
     </item>`
     })
     .join('\n')
