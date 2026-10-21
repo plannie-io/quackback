@@ -61,6 +61,7 @@ vi.mock('@/lib/server/domains/settings/settings.service', () => ({
 }))
 
 vi.mock('@/lib/server/domains/changelog/changelog-category.service', () => ({
+  categoryGateCondition: () => ({ gate: true }),
   categoryFilterCondition: (...args: unknown[]) => mockCategoryFilterCondition(...args),
   getCategoriesForEntries: (...args: unknown[]) => mockGetCategoriesForEntries(...args),
 }))
